@@ -1,0 +1,7 @@
+build/
+CMakeUserPresets.json
+.conan2/
+*.pyc
+__pycache__/
+*.tar.gz
+*.zip
