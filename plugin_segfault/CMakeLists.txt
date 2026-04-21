@@ -3,6 +3,7 @@ add_library(plugin_segfault SHARED
 )
 
 target_compile_definitions(plugin_segfault PRIVATE PLUGIN_SEGFAULT_BUILDING)
+target_compile_definitions(plugin_segfault PRIVATE BOOST_STACKTRACE_DYN_LINK)
 
 target_include_directories(plugin_segfault
     PUBLIC
@@ -11,7 +12,9 @@ target_include_directories(plugin_segfault
 )
 
 if(WIN32)
-    target_link_libraries(plugin_segfault PRIVATE DbgHelp)
+    target_link_libraries(plugin_segfault PRIVATE Boost::stacktrace_windbg)
+else()
+    target_link_libraries(plugin_segfault PRIVATE Boost::stacktrace_backtrace)
 endif()
 
 set_target_properties(plugin_segfault PROPERTIES
