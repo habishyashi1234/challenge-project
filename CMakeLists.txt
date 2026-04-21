@@ -33,6 +33,7 @@ find_package(GTest REQUIRED)
 
 # ── Subdirectories ─────────────────────────────────────────────────────────────
 add_subdirectory(plugin)
+add_subdirectory(plugin_segfault)
 add_subdirectory(app)
 
 # ── Tests ──────────────────────────────────────────────────────────────────────

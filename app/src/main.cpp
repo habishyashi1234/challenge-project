@@ -3,6 +3,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
+#include <vector>
 #include <string>
 
 #ifdef _WIN32
@@ -71,58 +72,64 @@ private:
     void* handle_ = nullptr;
 };
 
-std::string find_plugin(const char* argv0) {
+static std::string find_plugin(const char* argv0, const char* lib_name) {
     auto exe_dir = std::filesystem::path(argv0).parent_path();
     if (exe_dir.empty()) exe_dir = ".";
 
-#ifdef _WIN32
-    constexpr const char* name = "plugin.dll";
-#elif defined(__APPLE__)
-    constexpr const char* name = "libplugin.dylib";
-#else
-    constexpr const char* name = "libplugin.so";
-#endif
-
-    // Build layout: plugin sits next to the executable.
-    // Install layout (Linux/macOS): plugin lives in ../lib/ relative to bin/.
     for (auto&& candidate : {
-             exe_dir / name,
-             exe_dir / ".." / "lib" / name,
+             exe_dir / lib_name,
+             exe_dir / ".." / "lib" / lib_name,
          }) {
         if (std::filesystem::exists(candidate))
             return std::filesystem::canonical(candidate).string();
     }
 
-    return (exe_dir / name).string();
+    return (exe_dir / lib_name).string();
 }
 
 int main(int argc, char* argv[]) {
-    auto plugin_path = find_plugin(argv[0]);
-    std::cout << "Loading plugin from: " << plugin_path << std::endl;
 
-    PluginLoader loader(plugin_path);
-    if (!loader.is_loaded()) {
-        std::cerr << "Could not load the plugin library." << std::endl;
+    #ifdef _WIN32
+    constexpr const char* kPlugin         = "plugin.dll";
+    constexpr const char* kPluginSegfault = "plugin_segfault.dll";
+#else
+    constexpr const char* kPlugin         = "libplugin.so";
+    constexpr const char* kPluginSegfault = "libplugin_segfault.so";
+#endif
+    std::vector<PluginLoader> loaders;
+    loaders.reserve(2);
+
+    auto segfault_path = find_plugin(argv[0], kPluginSegfault);
+    std::cout << "Loading plugin from: " << segfault_path << "\n";
+    loaders.emplace_back(segfault_path);
+    if (loaders.back().is_loaded()) {
+        auto init_fn = loaders.back().get_symbol<plugin_init_fn>("plugin_init");
+        auto name_fn = loaders.back().get_symbol<plugin_get_name_fn>("plugin_get_name");
+        if (init_fn && name_fn && init_fn() == 0)
+            std::cout << "Plugin name : " << name_fn() << "\n";
+    }
+
+    auto plugin_path = find_plugin(argv[0], kPlugin);
+    std::cout << "Loading plugin from: " << plugin_path << "\n";
+    loaders.emplace_back(plugin_path);
+    if (!loaders.back().is_loaded()) {
+        std::cerr << "Could not load the plugin library.\n";
         return EXIT_FAILURE;
     }
 
-    auto init_fn = loader.get_symbol<plugin_init_fn>("plugin_init");
-    auto name_fn = loader.get_symbol<plugin_get_name_fn>("plugin_get_name");
-    auto add_fn = loader.get_symbol<plugin_add_fn>("plugin_add");
+    auto init_fn = loaders.back().get_symbol<plugin_init_fn>("plugin_init");
+    auto name_fn = loaders.back().get_symbol<plugin_get_name_fn>("plugin_get_name");
+    auto add_fn  = loaders.back().get_symbol<plugin_add_fn>("plugin_add");
 
     if (!init_fn || !name_fn || !add_fn) {
-        std::cerr << "Failed to resolve plugin symbols." << std::endl;
+        std::cerr << "Failed to resolve plugin symbols.\n";
         return EXIT_FAILURE;
     }
-
-    int rc = init_fn();
-    if (rc != 0) {
-        std::cerr << "plugin_init failed with code " << rc << std::endl;
+    if (int rc = init_fn(); rc != 0) {
+        std::cerr << "plugin_init failed with code " << rc << "\n";
         return EXIT_FAILURE;
     }
-
-    std::cout << "Plugin name : " << name_fn() << std::endl;
-    std::cout << "plugin_add(3, 4) = " << add_fn(3, 4) << std::endl;
-
+    std::cout << "Plugin name    : " << name_fn() << "\n";
+    std::cout << "plugin_add(3,4): " << add_fn(3, 4) << "\n";
     return EXIT_SUCCESS;
 }
