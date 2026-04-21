@@ -1,56 +1,65 @@
 {
-  "version": 6,
-  "cmakeMinimumRequired": { "major": 3, "minor": 21, "patch": 0 },
-  "configurePresets": [
-    {
-      "name": "base",
-      "hidden": true,
-      "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build/${presetName}",
-      "toolchainFile": "${sourceDir}/build/Release/generators/conan_toolchain.cmake",
-      "cacheVariables": {
-        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
-      }
+    "version": 6,
+    "include": ["ConanPresets.json"],
+    "cmakeMinimumRequired": {
+        "major": 3,
+        "minor": 21,
+        "patch": 0
     },
-    {
-      "name": "release",
-      "displayName": "Release",
-      "inherits": "base",
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release"
-      }  
-    },
-    {
-      "name": "debug",
-      "displayName": "Debug",
-      "inherits": "base",
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug"
-      }
-    }
-  ],
-  "buildPresets": [
-    {
-      "name": "release",
-      "configurePreset": "release",
-      "jobs": 4
-    },
-    {
-      "name": "debug",
-      "configurePreset": "debug",
-      "jobs": 4
-    }
-  ],
-  "testPresets": [
-    {
-      "name": "release",
-      "configurePreset": "release",
-      "output": { "verbosity": "verbose" }
-    },
-    {
-      "name": "debug",
-      "configurePreset": "debug",
-      "output": { "verbosity": "verbose" }
-    }
-  ]
+    "configurePresets": [
+        {
+            "name": "base",
+            "hidden": true,
+            "generator": "Ninja",
+            "cacheVariables": {
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+            }
+        },
+        {
+            "name": "release",
+            "displayName": "Release",
+            "inherits": ["conan-release" , "base"],
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release"
+            }
+        },
+        {
+            "name": "debug",
+            "displayName": "Debug",
+            "inherits": ["conan-debug" , "base"],
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug"
+            }
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "release",
+            "configurePreset": "release",
+            "jobs": 4
+        },
+        {
+            "name": "debug",
+            "configurePreset": "debug",
+            "jobs": 4
+        }
+    ],
+    "testPresets": [
+        {
+            "name": "release",
+            "configurePreset": "release",
+            "inherits": "conan-release",
+            "output": {
+                "verbosity": "verbose"
+            }
+        },
+        {
+            "name": "debug",
+            "configurePreset": "debug",
+            "inherits": "conan-debug",
+            "output": {
+                "verbosity": "verbose"
+            }
+        }
+    ]
 }
