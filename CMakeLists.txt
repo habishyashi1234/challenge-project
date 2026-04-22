@@ -39,3 +39,6 @@ add_subdirectory(app)
 # ── Tests ──────────────────────────────────────────────────────────────────────
 enable_testing()
 add_subdirectory(tests)
+
+# ── Install dependency handling ───────────────────────────────────────────
+include(cmake/InstallDeps.cmake)
