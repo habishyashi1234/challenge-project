@@ -7,7 +7,8 @@
 
 namespace {
 
-char g_log_path[512] = "crash_report.txt";  // NOLINT(cppcoreguidelines-avoid-c-arrays,modernize-avoid-c-arrays,cppcoreguidelines-avoid-non-const-global-variables)
+char g_log_path[512] =
+    "crash_report.txt";  // NOLINT(cppcoreguidelines-avoid-c-arrays,modernize-avoid-c-arrays,cppcoreguidelines-avoid-non-const-global-variables)
 
 void signal_handler(int sig) {
     boost::stacktrace::safe_dump_to(g_log_path);
@@ -23,7 +24,7 @@ PLUGIN_SEGFAULT_API int plugin_init(void) {
     const char* env = std::getenv("SEGFAULT_LOG_PATH");
     if (env != nullptr) {
         std::strncpy(g_log_path, env, sizeof(g_log_path) - 1);
-    }    
+    }
     ::signal(SIGSEGV, signal_handler);
     return 0;
 }
@@ -40,4 +41,4 @@ PLUGIN_SEGFAULT_API void plugin_trigger_segfault(void) {
 PLUGIN_SEGFAULT_API const char* plugin_get_crash_log_path(void) {
     return g_log_path;
 }
-} 
+}

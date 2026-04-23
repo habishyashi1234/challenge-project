@@ -31,7 +31,7 @@ public:
     ~PluginLoader() {
         if (handle_ == nullptr) {
             return;
-        }    
+        }
 #ifdef _WIN32
         FreeLibrary(static_cast<HMODULE>(handle_));
 #else
@@ -46,7 +46,7 @@ public:
     T get_symbol(const char* name) const {
         if (handle_ == nullptr) {
             return nullptr;
-        }    
+        }
 #ifdef _WIN32
         return reinterpret_cast<T>(GetProcAddress(static_cast<HMODULE>(handle_), name));
 #else
@@ -66,7 +66,7 @@ std::string get_plugin_path() {
     const char* env = std::getenv("PLUGIN_PATH");
     if (env != nullptr) {
         return env;
-    }    
+    }
 
     auto exe_dir = std::filesystem::path(".");
 #ifdef _WIN32

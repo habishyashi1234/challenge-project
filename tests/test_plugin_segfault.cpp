@@ -28,7 +28,7 @@ public:
     ~SegfaultPluginLoader() {
         if (handle_ == nullptr) {
             return;
-        }    
+        }
 #ifdef _WIN32
         FreeLibrary(static_cast<HMODULE>(handle_));
 #else
@@ -43,7 +43,7 @@ public:
     T get_symbol(const char* name) const {
         if (handle_ == nullptr) {
             return nullptr;
-        }    
+        }
 #ifdef _WIN32
         return reinterpret_cast<T>(GetProcAddress(static_cast<HMODULE>(handle_), name));
 #else
@@ -63,7 +63,7 @@ std::string get_plugin_path() {
     const char* env = std::getenv("PLUGIN_SEGFAULT_PATH");
     if (env != nullptr) {
         return env;
-    }    
+    }
 #ifdef _WIN32
     return "./plugin_segfault.dll";
 #else
@@ -109,7 +109,7 @@ TEST_F(SegfaultPluginTest, CrashLogPathRespectsEnvVar) {
     const char* expected = std::getenv("SEGFAULT_LOG_PATH");
     if (expected == nullptr) {
         GTEST_SKIP() << "SEGFAULT_LOG_PATH not set";
-    }    
+    }
 
     auto init_fn = loader_->get_symbol<plugin_init_fn>("plugin_init");
     auto path_fn = loader_->get_symbol<plugin_get_log_path_fn>("plugin_get_crash_log_path");

@@ -35,7 +35,7 @@ public:
     ~PluginLoader() {
         if (handle_ == nullptr) {
             return;
-        }    
+        }
 #ifdef _WIN32
         FreeLibrary(static_cast<HMODULE>(handle_));
 #else
@@ -62,7 +62,7 @@ public:
     T get_symbol(const char* name) const {
         if (handle_ == nullptr) {
             return nullptr;
-        }    
+        }
 #ifdef _WIN32
         return reinterpret_cast<T>(GetProcAddress(static_cast<HMODULE>(handle_), name));
 #else
@@ -75,22 +75,22 @@ public:
     }
 
 private:
-    void* handle_ = nullptr;   // NOLINT(cppcoreguidelines-pro-type-member-init)
+    void* handle_ = nullptr;  // NOLINT(cppcoreguidelines-pro-type-member-init)
 };
 
 static std::string find_plugin(const char* argv0, const char* lib_name) {
-    auto exe_dir = std::filesystem::path(argv0).parent_path(); 
+    auto exe_dir = std::filesystem::path(argv0).parent_path();
     if (exe_dir.empty()) {
         exe_dir = ".";
-    }    
+    }
 
     for (auto&& candidate : {
              exe_dir / lib_name,
              exe_dir / ".." / "lib" / lib_name,
          }) {
-        if (std::filesystem::exists(candidate))  {
+        if (std::filesystem::exists(candidate)) {
             return std::filesystem::canonical(candidate).string();
-        }    
+        }
     }
 
     return (exe_dir / lib_name).string();
@@ -115,7 +115,7 @@ int main(int argc, char* argv[]) {
         auto name_fn = loaders.back().get_symbol<plugin_get_name_fn>("plugin_get_name");
         if (init_fn != nullptr && name_fn != nullptr && init_fn() == 0) {
             std::cout << "Plugin name : " << name_fn() << "\n";
-        }    
+        }
     }
 
     auto plugin_path = find_plugin(argv[0], PluginLib);

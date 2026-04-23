@@ -45,6 +45,30 @@ if(ENABLE_CLANG_TIDY)
     endif()
 endif()
 
+# ── Clang-format targets ───────────────────────────────────────────────────────
+find_program(CLANG_FORMAT_EXE NAMES clang-format)
+if(CLANG_FORMAT_EXE)
+    file(GLOB_RECURSE ALL_CXX_FILES
+        CONFIGURE_DEPENDS
+        "${CMAKE_SOURCE_DIR}/app/*.cpp"
+        "${CMAKE_SOURCE_DIR}/plugin/*.cpp"
+        "${CMAKE_SOURCE_DIR}/plugin/*.h"
+        "${CMAKE_SOURCE_DIR}/plugin_segfault/*.cpp"
+        "${CMAKE_SOURCE_DIR}/plugin_segfault/*.h"
+        "${CMAKE_SOURCE_DIR}/tests/*.cpp"
+    )
+    add_custom_target(format-check
+        COMMAND ${CLANG_FORMAT_EXE} --dry-run --Werror ${ALL_CXX_FILES}
+        COMMENT "Checking clang-format violations"
+        VERBATIM
+    )
+    add_custom_target(format-fix
+        COMMAND ${CLANG_FORMAT_EXE} -i ${ALL_CXX_FILES}
+        COMMENT "Fixing clang-format violations"
+        VERBATIM
+    )
+endif()
+
 # ── Dependencies via Conan ─────────────────────────────────────────────────────
 find_package(Boost REQUIRED COMPONENTS log log_setup)
 find_package(GTest REQUIRED)
