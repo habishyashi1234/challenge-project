@@ -4,16 +4,16 @@
 #include <string>
 
 #ifdef _WIN32
-    #include <windows.h>
+#include <windows.h>
 #else
-    #include <dlfcn.h>
+#include <dlfcn.h>
 #endif
 
 namespace {
 
-using plugin_init_fn          = int (*)();
-using plugin_get_name_fn      = const char* (*)();
-using plugin_get_log_path_fn  = const char* (*)();
+using plugin_init_fn = int (*)();
+using plugin_get_name_fn = const char* (*)();
+using plugin_get_log_path_fn = const char* (*)();
 
 class SegfaultPluginLoader {
 public:
@@ -26,7 +26,9 @@ public:
     }
 
     ~SegfaultPluginLoader() {
-        if (!handle_) return;
+        if (handle_ == nullptr) {
+            return;
+        }    
 #ifdef _WIN32
         FreeLibrary(static_cast<HMODULE>(handle_));
 #else
@@ -39,16 +41,19 @@ public:
 
     template <typename T>
     T get_symbol(const char* name) const {
-        if (!handle_) return nullptr;
+        if (handle_ == nullptr) {
+            return nullptr;
+        }    
 #ifdef _WIN32
-        return reinterpret_cast<T>(
-            GetProcAddress(static_cast<HMODULE>(handle_), name));
+        return reinterpret_cast<T>(GetProcAddress(static_cast<HMODULE>(handle_), name));
 #else
         return reinterpret_cast<T>(dlsym(handle_, name));
 #endif
     }
 
-    [[nodiscard]] bool is_loaded() const { return handle_ != nullptr; }
+    [[nodiscard]] bool is_loaded() const {
+        return handle_ != nullptr;
+    }
 
 private:
     void* handle_ = nullptr;
@@ -56,7 +61,9 @@ private:
 
 std::string get_plugin_path() {
     const char* env = std::getenv("PLUGIN_SEGFAULT_PATH");
-    if (env) return env;
+    if (env != nullptr) {
+        return env;
+    }    
 #ifdef _WIN32
     return "./plugin_segfault.dll";
 #else
@@ -68,8 +75,7 @@ class SegfaultPluginTest : public ::testing::Test {
 protected:
     void SetUp() override {
         loader_ = std::make_unique<SegfaultPluginLoader>(get_plugin_path());
-        ASSERT_TRUE(loader_->is_loaded())
-            << "plugin_segfault not found. Set PLUGIN_SEGFAULT_PATH.";
+        ASSERT_TRUE(loader_->is_loaded()) << "plugin_segfault not found. Set PLUGIN_SEGFAULT_PATH.";
     }
 
     void TearDown() override { loader_.reset(); }
@@ -101,7 +107,9 @@ TEST_F(SegfaultPluginTest, AllSymbolsPresent) {
 
 TEST_F(SegfaultPluginTest, CrashLogPathRespectsEnvVar) {
     const char* expected = std::getenv("SEGFAULT_LOG_PATH");
-    if (!expected) GTEST_SKIP() << "SEGFAULT_LOG_PATH not set";
+    if (expected == nullptr) {
+        GTEST_SKIP() << "SEGFAULT_LOG_PATH not set";
+    }    
 
     auto init_fn = loader_->get_symbol<plugin_init_fn>("plugin_init");
     auto path_fn = loader_->get_symbol<plugin_get_log_path_fn>("plugin_get_crash_log_path");
@@ -112,4 +120,4 @@ TEST_F(SegfaultPluginTest, CrashLogPathRespectsEnvVar) {
     EXPECT_STREQ(path_fn(), expected);
 }
 
-} 
+}  // namespace

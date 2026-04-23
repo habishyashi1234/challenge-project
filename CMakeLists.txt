@@ -27,6 +27,24 @@ if(ENABLE_SANITIZERS)
     include(cmake/Sanitizers.cmake)
 endif()
 
+# ── Clang-tidy ─────────────────────────────────────────────────────────────────
+option(ENABLE_CLANG_TIDY "Enable clang-tidy analysis during build" OFF)
+
+if(ENABLE_CLANG_TIDY)
+    find_program(CLANG_TIDY_EXE NAMES clang-tidy)
+    if(CLANG_TIDY_EXE)
+        message(STATUS "clang-tidy found: ${CLANG_TIDY_EXE}")
+        set(CMAKE_CXX_CLANG_TIDY
+            "${CLANG_TIDY_EXE}"
+            "--warnings-as-errors=*"
+        )
+        set(CMAKE_CXX_STANDARD_INCLUDE_DIRECTORIES
+            ${CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES})
+    else()
+        message(WARNING "clang-tidy not found — skipping analysis")
+    endif()
+endif()
+
 # ── Dependencies via Conan ─────────────────────────────────────────────────────
 find_package(Boost REQUIRED COMPONENTS log log_setup)
 find_package(GTest REQUIRED)

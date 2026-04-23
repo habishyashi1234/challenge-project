@@ -1,14 +1,15 @@
 #include <gtest/gtest.h>
-#include "plugin/plugin.h"
 
 #include <cstdlib>
 #include <filesystem>
 #include <string>
 
+#include "plugin/plugin.h"
+
 #ifdef _WIN32
-    #include <windows.h>
+#include <windows.h>
 #else
-    #include <dlfcn.h>
+#include <dlfcn.h>
 #endif
 
 namespace {
@@ -28,7 +29,9 @@ public:
     }
 
     ~PluginLoader() {
-        if (!handle_) return;
+        if (handle_ == nullptr) {
+            return;
+        }    
 #ifdef _WIN32
         FreeLibrary(static_cast<HMODULE>(handle_));
 #else
@@ -41,7 +44,9 @@ public:
 
     template <typename T>
     T get_symbol(const char* name) const {
-        if (!handle_) return nullptr;
+        if (handle_ == nullptr) {
+            return nullptr;
+        }    
 #ifdef _WIN32
         return reinterpret_cast<T>(GetProcAddress(static_cast<HMODULE>(handle_), name));
 #else
@@ -49,7 +54,9 @@ public:
 #endif
     }
 
-    [[nodiscard]] bool is_loaded() const { return handle_ != nullptr; }
+    [[nodiscard]] bool is_loaded() const {
+        return handle_ != nullptr;
+    }
 
 private:
     void* handle_ = nullptr;
@@ -57,7 +64,9 @@ private:
 
 std::string get_plugin_path() {
     const char* env = std::getenv("PLUGIN_PATH");
-    if (env) return env;
+    if (env != nullptr) {
+        return env;
+    }    
 
     auto exe_dir = std::filesystem::path(".");
 #ifdef _WIN32
@@ -74,12 +83,10 @@ protected:
     void SetUp() override {
         loader_ = std::make_unique<PluginLoader>(get_plugin_path());
         ASSERT_TRUE(loader_->is_loaded()) << "Plugin library not found. "
-            "Set PLUGIN_PATH or run from the build/bin directory.";
+                                             "Set PLUGIN_PATH or run from the build/bin directory.";
     }
 
-    void TearDown() override {
-        loader_.reset();
-    }
+    void TearDown() override { loader_.reset(); }
 
     std::unique_ptr<PluginLoader> loader_;
 };
@@ -115,4 +122,4 @@ TEST_F(PluginTest, AllSymbolsResolvable) {
     EXPECT_NE(loader_->get_symbol<plugin_add_fn>("plugin_add"), nullptr);
 }
 
-} // namespace
+}  // namespace

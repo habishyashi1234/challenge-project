@@ -1,15 +1,15 @@
-#include "plugin/plugin.h"
-
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
-#include <vector>
 #include <string>
+#include <vector>
+
+#include "plugin/plugin.h"
 
 #ifdef _WIN32
-    #include <windows.h>
+#include <windows.h>
 #else
-    #include <dlfcn.h>
+#include <dlfcn.h>
 #endif
 
 using plugin_init_fn = int (*)();
@@ -26,14 +26,16 @@ public:
         }
 #else
         handle_ = dlopen(path.c_str(), RTLD_LAZY);
-        if (!handle_) {
+        if (handle_ == nullptr) {
             std::cerr << "Failed to load plugin: " << dlerror() << std::endl;
         }
 #endif
     }
 
     ~PluginLoader() {
-        if (!handle_) return;
+        if (handle_ == nullptr) {
+            return;
+        }    
 #ifdef _WIN32
         FreeLibrary(static_cast<HMODULE>(handle_));
 #else
@@ -58,7 +60,9 @@ public:
 
     template <typename T>
     T get_symbol(const char* name) const {
-        if (!handle_) return nullptr;
+        if (handle_ == nullptr) {
+            return nullptr;
+        }    
 #ifdef _WIN32
         return reinterpret_cast<T>(GetProcAddress(static_cast<HMODULE>(handle_), name));
 #else
@@ -66,50 +70,55 @@ public:
 #endif
     }
 
-    [[nodiscard]] bool is_loaded() const { return handle_ != nullptr; }
+    [[nodiscard]] bool is_loaded() const {
+        return handle_ != nullptr;
+    }
 
 private:
-    void* handle_ = nullptr;
+    void* handle_ = nullptr;   // NOLINT(cppcoreguidelines-pro-type-member-init)
 };
 
 static std::string find_plugin(const char* argv0, const char* lib_name) {
-    auto exe_dir = std::filesystem::path(argv0).parent_path();
-    if (exe_dir.empty()) exe_dir = ".";
+    auto exe_dir = std::filesystem::path(argv0).parent_path(); 
+    if (exe_dir.empty()) {
+        exe_dir = ".";
+    }    
 
     for (auto&& candidate : {
              exe_dir / lib_name,
              exe_dir / ".." / "lib" / lib_name,
          }) {
-        if (std::filesystem::exists(candidate))
+        if (std::filesystem::exists(candidate))  {
             return std::filesystem::canonical(candidate).string();
+        }    
     }
 
     return (exe_dir / lib_name).string();
 }
 
 int main(int argc, char* argv[]) {
-
-    #ifdef _WIN32
-    constexpr const char* kPlugin         = "plugin.dll";
-    constexpr const char* kPluginSegfault = "plugin_segfault.dll";
+#ifdef _WIN32
+    constexpr const char* PluginLib = "plugin.dll";
+    constexpr const char* PluginSegfaultLib = "plugin_segfault.dll";
 #else
-    constexpr const char* kPlugin         = "libplugin.so";
-    constexpr const char* kPluginSegfault = "libplugin_segfault.so";
+    constexpr const char* PluginLib = "libplugin.so";
+    constexpr const char* PluginSegfaultLib = "libplugin_segfault.so";
 #endif
     std::vector<PluginLoader> loaders;
     loaders.reserve(2);
 
-    auto segfault_path = find_plugin(argv[0], kPluginSegfault);
+    auto segfault_path = find_plugin(argv[0], PluginSegfaultLib);
     std::cout << "Loading plugin from: " << segfault_path << "\n";
     loaders.emplace_back(segfault_path);
     if (loaders.back().is_loaded()) {
         auto init_fn = loaders.back().get_symbol<plugin_init_fn>("plugin_init");
         auto name_fn = loaders.back().get_symbol<plugin_get_name_fn>("plugin_get_name");
-        if (init_fn && name_fn && init_fn() == 0)
+        if (init_fn != nullptr && name_fn != nullptr && init_fn() == 0) {
             std::cout << "Plugin name : " << name_fn() << "\n";
+        }    
     }
 
-    auto plugin_path = find_plugin(argv[0], kPlugin);
+    auto plugin_path = find_plugin(argv[0], PluginLib);
     std::cout << "Loading plugin from: " << plugin_path << "\n";
     loaders.emplace_back(plugin_path);
     if (!loaders.back().is_loaded()) {
@@ -119,9 +128,9 @@ int main(int argc, char* argv[]) {
 
     auto init_fn = loaders.back().get_symbol<plugin_init_fn>("plugin_init");
     auto name_fn = loaders.back().get_symbol<plugin_get_name_fn>("plugin_get_name");
-    auto add_fn  = loaders.back().get_symbol<plugin_add_fn>("plugin_add");
+    auto add_fn = loaders.back().get_symbol<plugin_add_fn>("plugin_add");
 
-    if (!init_fn || !name_fn || !add_fn) {
+    if (init_fn == nullptr || name_fn == nullptr || add_fn == nullptr) {
         std::cerr << "Failed to resolve plugin symbols.\n";
         return EXIT_FAILURE;
     }
