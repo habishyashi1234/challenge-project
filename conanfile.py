@@ -27,7 +27,7 @@ class ChallengeConan(ConanFile):
         cmake_layout(self)
 
     def generate(self):
-        tc = CMakeToolchain(self)
+        tc = CMakeToolchain(self, generator="Ninja")
         tc.user_presets_path = 'ConanPresets.json'
         tc.generate()
 
