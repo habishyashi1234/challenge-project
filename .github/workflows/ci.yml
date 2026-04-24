@@ -111,7 +111,7 @@ jobs:
           key: conan-lint-${{ hashFiles('conanfile.py') }}
 
       - name: Conan install
-        run: conan install . --build=missing -s build_type=Release -s compiler.cppstd=20 --profile=${{ matrix.conan_profile }}
+        run: conan install . --build=missing -s build_type=Release -s compiler.cppstd=20
 
       - name: Configure with clang-tidy
         run: cmake --preset conan-release -DENABLE_CLANG_TIDY=ON
