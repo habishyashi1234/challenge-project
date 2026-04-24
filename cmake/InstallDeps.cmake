@@ -13,7 +13,11 @@ string(TOUPPER "${CMAKE_BUILD_TYPE}" _build_type_upper)
 set(_boost_lib_dir "${boost_LIB_DIRS_${_build_type_upper}}")
 
 if(_boost_lib_dir AND EXISTS "${_boost_lib_dir}")
-    file(GLOB _boost_libs "${_boost_lib_dir}/${_lib_pattern}")
+    fget_filename_component(_boost_root "${_boost_lib_dir}" DIRECTORY)
+    file(GLOB _boost_libs
+        "${_boost_lib_dir}/${_lib_pattern}"
+        "${_boost_root}/bin/${_lib_pattern}"
+    )
     if(_boost_libs)
         install(FILES ${_boost_libs}
             DESTINATION ${_dest}

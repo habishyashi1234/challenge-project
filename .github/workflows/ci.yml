@@ -198,7 +198,9 @@ jobs:
         run: cmake --build --preset conan-release
 
       - name: Install
-        run: cmake --install build/Release --prefix ./install
+        run: cmake --build --preset conan-release --target install
+        env:
+          DESTDIR: ${{ github.workspace }}/install
 
       - name: Archive (Linux)
         if: matrix.os == 'ubuntu-latest'
