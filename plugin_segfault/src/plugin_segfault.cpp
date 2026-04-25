@@ -7,8 +7,8 @@
 
 namespace {
 
-char g_log_path[512] =   // NOLINT(cppcoreguidelines-avoid-c-arrays,modernize-avoid-c-arrays,cppcoreguidelines-avoid-non-const-global-variables)
-    "crash_report.txt";  
+char  // NOLINT(cppcoreguidelines-avoid-c-arrays,modernize-avoid-c-arrays,cppcoreguidelines-avoid-non-const-global-variables)
+    g_log_path[512] = "crash_report.txt";
 
 void signal_handler(int sig) {
     boost::stacktrace::safe_dump_to(g_log_path);
