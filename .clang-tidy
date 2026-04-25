@@ -16,7 +16,11 @@ Checks: >
   -cppcoreguidelines-pro-bounds-array-to-pointer-decay,
   -cppcoreguidelines-special-member-functions,
   -cppcoreguidelines-non-private-member-variables-in-classes,
-  -cppcoreguidelines-prefer-member-initializer
+  -cppcoreguidelines-prefer-member-initializer,
+  -cppcoreguidelines-avoid-c-arrays,
+  -modernize-avoid-c-arrays,
+  -cppcoreguidelines-avoid-non-const-global-variables
+
 
 WarningsAsErrors: '*'
 
