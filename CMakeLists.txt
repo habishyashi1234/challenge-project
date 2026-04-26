@@ -25,7 +25,9 @@ option(ENABLE_SANITIZERS "Enable AddressSanitizer and UBSan (GCC/Clang only)" OF
 # ── Sanitizer helper ───────────────────────────────────────────────────────────
 if(ENABLE_SANITIZERS)
     include(cmake/Sanitizers.cmake)
+    enable_sanitizers()
 endif()
+
 
 # ── Clang-tidy ─────────────────────────────────────────────────────────────────
 option(ENABLE_CLANG_TIDY "Enable clang-tidy analysis during build" OFF)

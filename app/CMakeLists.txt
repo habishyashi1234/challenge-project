@@ -12,6 +12,10 @@ if(UNIX AND NOT APPLE)
     target_link_options(challenge PRIVATE -Wl,--disable-new-dtags)
 endif()
 
+if(ENABLE_SANITIZERS)
+    target_link_libraries(challenge PRIVATE challenge::sanitizers)
+endif()
+
 set_target_properties(challenge PROPERTIES
     BUILD_RPATH "${CONAN_RUNTIME_LIB_DIRS}"
     INSTALL_RPATH "$ORIGIN/../lib"

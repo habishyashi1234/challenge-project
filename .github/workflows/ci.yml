@@ -11,7 +11,7 @@ jobs:
 
   # ── Build & Test ─────────────────────────────────────────────────────────────
   build:
-    name: Build & Test (${{ matrix.os }} ${{ matrix.compiler }})
+    name: Build & Test (${{ matrix.compiler }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -19,15 +19,15 @@ jobs:
         include:
           - os: ubuntu-latest
             compiler: GCC
-            conan_profile: default
+            conan_profile: profiles/linux-gcc
 
           - os: ubuntu-latest
             compiler: Clang
-            conan_profile: clang
+            conan_profile: profiles/linux-clang
 
           - os: windows-latest
             compiler: MSVC
-            conan_profile: default
+            conan_profile: profiles/windows-msvc
 
     steps:
       - uses: actions/checkout@v4
@@ -44,35 +44,19 @@ jobs:
         if: matrix.os == 'windows-latest'
         uses: ilammy/msvc-dev-cmd@v1
 
-      - name: Set up Clang
+      - name: Install Clang
         if: matrix.compiler == 'Clang'
-        run: |
-          sudo apt-get install -y clang
-          echo "CC=clang" >> $GITHUB_ENV
-          echo "CXX=clang++" >> $GITHUB_ENV
-
-      - name: Detect Conan profile
-        run: conan profile detect --force
-
-      - name: Create Clang Conan profile
-        if: matrix.compiler == 'Clang'
-        run: |
-          conan profile detect --force --name clang
-          sed -i 's/compiler=gcc/compiler=clang/' ~/.conan2/profiles/clang
-          sed -i 's/compiler.version=.*/compiler.version=14/' ~/.conan2/profiles/clang
-          sed -i '/compiler.libcxx/d' ~/.conan2/profiles/clang
-          echo "compiler.libcxx=libstdc++11" >> ~/.conan2/profiles/clang
+        run: sudo apt-get install -y clang
 
       - name: Cache Conan packages
         uses: actions/cache@v4
         with:
           path: ~/.conan2/p
           key: conan-${{ matrix.os }}-${{ matrix.compiler }}-${{ hashFiles('conanfile.py') }}
-          restore-keys: |
-            conan-${{ matrix.os }}-${{ matrix.compiler }}-
+          restore-keys: conan-${{ matrix.os }}-${{ matrix.compiler }}-
 
       - name: Conan install
-        run: conan install . --build=missing -s build_type=Release -s compiler.cppstd=20 --profile=${{ matrix.conan_profile }}
+        run: conan install . --build=missing -s build_type=Release --profile=${{ matrix.conan_profile }}
 
       - name: Configure
         run: cmake --preset conan-release
@@ -90,19 +74,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install tools
-        run: sudo apt-get install -y clang-format-14 clang-tidy-14 && sudo ln -sf /usr/bin/clang-format-14 /usr/bin/clang-format && sudo ln -sf /usr/bin/clang-tidy-14 /usr/bin/clang-tidy
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
+      - name: Install tools
+        run: sudo apt-get install -y clang-format-14 clang-tidy-14 && sudo ln -sf /usr/bin/clang-format-14 /usr/bin/clang-format && sudo ln -sf /usr/bin/clang-tidy-14 /usr/bin/clang-tidy
+
       - name: Install Conan
         run: pip install conan
-
-      - name: Detect Conan profile
-        run: conan profile detect --force
 
       - name: Cache Conan packages
         uses: actions/cache@v4
@@ -111,7 +92,7 @@ jobs:
           key: conan-lint-${{ hashFiles('conanfile.py') }}
 
       - name: Conan install
-        run: conan install . --build=missing -s build_type=Release -s compiler.cppstd=20
+        run: conan install . --build=missing -s build_type=Release --profile=profiles/linux-gcc
 
       - name: Configure with clang-tidy
         run: cmake --preset conan-release -DENABLE_CLANG_TIDY=ON
@@ -122,9 +103,60 @@ jobs:
       - name: Check clang-tidy
         run: cmake --build --preset conan-release
 
+  # ── Sanitizers ───────────────────────────────────────────────────────────────
+  sanitize:
+    name: ASan + UBSan (${{ matrix.compiler }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - compiler: GCC
+            conan_profile: profiles/linux-gcc
+
+          - compiler: Clang
+            conan_profile: profiles/linux-clang
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Conan
+        run: pip install conan
+
+      - name: Install Clang
+        if: matrix.compiler == 'Clang'
+        run: sudo apt-get install -y clang
+
+      - name: Cache Conan packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.conan2/p
+          key: conan-asan-${{ matrix.compiler }}-${{ hashFiles('conanfile.py') }}
+          restore-keys: conan-asan-${{ matrix.compiler }}-
+
+      - name: Conan install
+        run: conan install . --build=missing -s build_type=Release --profile=${{ matrix.conan_profile }}
+
+      - name: Configure with sanitizers
+        run: cmake --preset conan-release -DENABLE_SANITIZERS=ON
+
+      - name: Build
+        run: cmake --build --preset conan-release
+
+      - name: Test
+        run: ctest --preset conan-release --output-on-failure
+        env:
+          ASAN_OPTIONS: halt_on_error=1:detect_leaks=0
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+
   # ── Install & Package ────────────────────────────────────────────────────────
   package:
-    name: Install & Package (${{ matrix.os }} ${{ matrix.compiler }})
+    name: Install & Package (${{ matrix.compiler }})
     runs-on: ${{ matrix.os }}
     needs: build
     strategy:
@@ -133,17 +165,17 @@ jobs:
         include:
           - os: ubuntu-latest
             compiler: GCC
-            conan_profile: default
+            conan_profile: profiles/linux-gcc
             archive_ext: tar.gz
 
           - os: ubuntu-latest
             compiler: Clang
-            conan_profile: clang
+            conan_profile: profiles/linux-clang
             archive_ext: tar.gz
 
           - os: windows-latest
             compiler: MSVC
-            conan_profile: default
+            conan_profile: profiles/windows-msvc
             archive_ext: zip
 
     steps:
@@ -161,35 +193,19 @@ jobs:
         if: matrix.os == 'windows-latest'
         uses: ilammy/msvc-dev-cmd@v1
 
-      - name: Set up Clang
+      - name: Install Clang
         if: matrix.compiler == 'Clang'
-        run: |
-          sudo apt-get install -y clang
-          echo "CC=clang" >> $GITHUB_ENV
-          echo "CXX=clang++" >> $GITHUB_ENV
-
-      - name: Detect Conan profile
-        run: conan profile detect --force
-
-      - name: Create Clang Conan profile
-        if: matrix.compiler == 'Clang'
-        run: |
-          conan profile detect --force --name clang
-          sed -i 's/compiler=gcc/compiler=clang/' ~/.conan2/profiles/clang
-          sed -i 's/compiler.version=.*/compiler.version=14/' ~/.conan2/profiles/clang
-          sed -i '/compiler.libcxx/d' ~/.conan2/profiles/clang
-          echo "compiler.libcxx=libstdc++11" >> ~/.conan2/profiles/clang
+        run: sudo apt-get install -y clang
 
       - name: Cache Conan packages
         uses: actions/cache@v4
         with:
           path: ~/.conan2/p
           key: conan-${{ matrix.os }}-${{ matrix.compiler }}-${{ hashFiles('conanfile.py') }}
-          restore-keys: |
-            conan-${{ matrix.os }}-${{ matrix.compiler }}-
+          restore-keys: conan-${{ matrix.os }}-${{ matrix.compiler }}-
 
       - name: Conan install
-        run: conan install . --build=missing -s build_type=Release -s compiler.cppstd=20 --profile=${{ matrix.conan_profile }}
+        run: conan install . --build=missing -s build_type=Release --profile=${{ matrix.conan_profile }}
 
       - name: Configure
         run: cmake --preset conan-release
@@ -204,12 +220,12 @@ jobs:
 
       - name: Archive (Linux)
         if: matrix.os == 'ubuntu-latest'
-        run: tar -czf challenge-${{ matrix.compiler }}.tar.gz -C install .
+        run: tar -czf challenge-${{ matrix.compiler }}.tar.gz -C ${{ github.workspace }}/install .
 
       - name: Archive (Windows)
         if: matrix.os == 'windows-latest'
         shell: pwsh
-        run: Compress-Archive -Path install\* -DestinationPath challenge-MSVC.zip
+        run: Compress-Archive -Path ${{ github.workspace }}/install/* -DestinationPath challenge-MSVC.zip
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

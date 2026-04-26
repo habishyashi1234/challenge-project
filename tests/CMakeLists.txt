@@ -19,6 +19,10 @@ if(UNIX AND NOT APPLE)
     target_link_libraries(plugin_tests PRIVATE dl)
 endif()
 
+if(ENABLE_SANITIZERS)
+    target_link_libraries(plugin_tests PRIVATE challenge::sanitizers)
+endif()
+
 # ── CTest registration ─────────────────────────────────────────────────────────
 add_test(NAME plugin_tests COMMAND plugin_tests)
 

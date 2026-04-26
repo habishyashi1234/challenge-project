@@ -17,6 +17,10 @@ else()
     target_link_libraries(plugin_segfault PRIVATE Boost::stacktrace_backtrace)
 endif()
 
+if(ENABLE_SANITIZERS)
+    target_link_libraries(plugin_segfault PRIVATE challenge::sanitizers)
+endif()
+
 set_target_properties(plugin_segfault PROPERTIES
     OUTPUT_NAME "plugin_segfault"
     BUILD_RPATH  "$ORIGIN"

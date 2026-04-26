@@ -17,6 +17,10 @@ target_link_libraries(plugin
         Boost::filesystem
 )
 
+if(ENABLE_SANITIZERS)
+    target_link_libraries(plugin PRIVATE challenge::sanitizers)
+endif()
+
 set_target_properties(plugin PROPERTIES
     OUTPUT_NAME "plugin"
     BUILD_RPATH  "$ORIGIN"
