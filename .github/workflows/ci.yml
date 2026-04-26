@@ -56,7 +56,7 @@ jobs:
           restore-keys: conan-${{ matrix.os }}-${{ matrix.compiler }}-
 
       - name: Conan install
-        run: conan install . --build=missing -s build_type=Release --profile=${{ matrix.conan_profile }}
+        run: conan install . --build=missing -s build_type=Release --profile:host=${{ matrix.conan_profile }} --profile:build=${{ matrix.conan_profile }}
 
       - name: Configure
         run: cmake --preset conan-release
@@ -92,7 +92,7 @@ jobs:
           key: conan-lint-${{ hashFiles('conanfile.py') }}
 
       - name: Conan install
-        run: conan install . --build=missing -s build_type=Release --profile=profiles/linux-gcc
+        run: conan install . --build=missing -s build_type=Release --profile:host=profiles/linux-gcc --profile:build=profiles/linux-gcc
 
       - name: Configure with clang-tidy
         run: cmake --preset conan-release -DENABLE_CLANG_TIDY=ON
@@ -140,7 +140,7 @@ jobs:
           restore-keys: conan-asan-${{ matrix.compiler }}-
 
       - name: Conan install
-        run: conan install . --build=missing -s build_type=Release --profile=${{ matrix.conan_profile }}
+        run: conan install . --build=missing -s build_type=Release --profile:host=${{ matrix.conan_profile }} --profile:build=${{ matrix.conan_profile }}
 
       - name: Configure with sanitizers
         run: cmake --preset conan-release -DENABLE_SANITIZERS=ON
@@ -205,7 +205,7 @@ jobs:
           restore-keys: conan-${{ matrix.os }}-${{ matrix.compiler }}-
 
       - name: Conan install
-        run: conan install . --build=missing -s build_type=Release --profile=${{ matrix.conan_profile }}
+        run: conan install . --build=missing -s build_type=Release --profile:host=${{ matrix.conan_profile }} --profile:build=${{ matrix.conan_profile }}
 
       - name: Configure
         run: cmake --preset conan-release
