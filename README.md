@@ -1,234 +1,340 @@
+# Challenge — Runtime Plugin System
 
-## Quick Overview
-
-You are given a small C++20 project that demonstrates a runtime plugin system.
-
-Your task is to add a new plugin and provide the full build, test, lint, packaging, and CI infrastructure around the existing source code.
-
-## Table of Contents
-
-- [Quick Overview](#quick-overview)
-  - [1. Technical Solution Constraints](#1-technical-solution-constraints)
-  - [2. Definition of Done](#2-definition-of-done)
-  - [3. Technical Interview](#3-technical-interview)
-- [Technical Challenge](#technical-challenge)
-  - [1. Provided Source Files](#1-provided-source-files)
-  - [2. Requirements](#2-requirements)
-    - [Task 1 — Use CMake Build System](#task-1--use-cmake-build-system)
-    - [Task 2 — Add Dependency Management Using Conan 2](#task-2--add-dependency-management-using-conan-2)
-    - [Task 3 — Add a SEGFAULT/Access Violation Detection Plugin](#task-3--add-a-segfaultaccess-violation-detection-plugin)
-    - [Task 4 — Installation](#task-4--installation)
-    - [Task 5 — Add Linters](#task-5--add-linters)
-    - [Task 6 — CI / CD (GitHub Actions)](#task-6--ci--cd-github-actions)
-    - [Extra Task 7 — Add Sanitizers](#extra-task-7--add-sanitizers)
-    - [Extra Task 8 — Introduce a Conan Package](#extra-task-8--introduce-a-conan-package)
-  - [3. Evaluation Criteria](#3-evaluation-criteria)
+A C++20 project demonstrating a runtime plugin architecture built with modern
+CMake and Conan 2. The host executable discovers and loads shared libraries at
+runtime via `dlopen` (Linux) and `LoadLibrary` (Windows) — there is no
+link-time dependency between the host and its plugins. The project ships a
+full GitHub Actions pipeline covering Linux (GCC and Clang) and Windows
+(MSVC), static analysis, sanitizer runs, and automated release packaging.
 
 ---
 
-### 1. Technical Solution Constraints
+## What gets built
 
-- **C++ standard**: C++20, extensions off.
-- **Platforms**: Linux (GCC 11+ and Clang 14+) and Windows (MSVC 2022+). *macOS support is not required*.
-- **Dependency manager**: Conan 2 (not Conan 1, not vcpkg).
-- **Build system**: CMake 3.21.
-- **Test framework**: Google Test (via Conan).
-- **Third-party deps**: must be linked as a **shared** library.
+**`challenge`** — the host executable. It loads both plugins at startup by
+calling `dlopen`/`LoadLibrary`, resolves their exported symbols with
+`dlsym`/`GetProcAddress`, and invokes them through C-compatible function
+pointers. The host has no link-time knowledge of either plugin — they can be
+swapped or extended without recompiling anything.
 
-### 2. Definition of done
+**`libplugin.so` / `plugin.dll`** — the demo plugin. Uses Boost.Log to write
+a message on initialisation and exposes three symbols: `plugin_init`,
+`plugin_get_name`, and `plugin_add`. All symbols use `extern "C"` linkage with
+the `PLUGIN_API` visibility attribute so `dlsym` finds them by plain C name
+across compilers and optimisation levels.
 
-> ⚠️ Send us back the link to your public repo at least 24 hrs prior tech interview. <br>
-> **Send your link to the e-mails:** **evgenii.neruchek@agile-robots.com**, **niklas.hollstegge@agile-robots.com**
+**`libplugin_segfault.so` / `plugin_segfault.dll`** — the crash detection
+plugin. Installs a `SIGSEGV`/`SIGBUS` signal handler on Linux (using
+`Boost::stacktrace_backtrace`) or a structured exception handler on Windows
+(using `Boost::stacktrace_windbg`) that writes a full call-stack backtrace to
+a file before letting the process terminate normally. The host always loads
+this plugin first so the handler is active before any other code runs.
 
-A final deliverable is a **public GitHub repository** containing:
-- The history of your changes (incl. related CI pipelines).
-- All source files (provided + your additions).
-- `CMakeLists.txt` files, `conanfile.py`, `.clang-format`, `.clang-tidy`.
-- `.github/workflows/` CI configuration.
-- A `README.md` with build / usage instructions.
-- A green CI run on the `main` branch demonstrating all checks pass.
-- At least one tagged release (`v*`) with the install archives attached.
+The crash report is written to `crash_report.txt` next to the executable by
+default. Override it with the `SEGFAULT_LOG_PATH` environment variable:
 
-
-> ⚠️ **After the tech interview** please **make the repository private** forever, or remove it.
-
-### 3. Technical interview
-
-During the technical interview be ready to share your screen to make some changes in the project.
-
----
-
-## Technical challenge
-
-### 1. Provided Source Files
-
-```
-app/
-└── src/main.cpp              
-
-plugin/
-├── include/plugin/plugin.h
-└── src/plugin.cpp           
-
-tests/
-└── test_plugin.cpp         
-```
-
----
-
-### 2. Requirements
-
-Complete every task below. Each section is evaluated independently.
-
-Some tasks may have an _"Extra Goal"_, and some tasks are marked as _"Extra Task"_ (tasks 7 & 8). They're nice-to-have; finish it only if you have spare time.
-
-> ⚠️ **Do not modify the provided source files unless a task explicitly requires it** (e.g., adding a new plugin). All other work should be in build-system files, configuration, and CI scripts.
-
-> ⚠️ **We did this challenge too long on purpose**, please prioritize your work to get the maximum value possible within the time limit.
-
-> ⚠️ **If you didn't fulfill all requirements/goals/tasks it's ok and expected**, it doesn't mean the challenge is failed. 
-> Bring to the Technical interview everything you was able to finish in time.
-> <br><br>_Example: Failing Windows or Linux pipeline is acceptable._
-
-> ⚠️ You're **allowed to use any third-party help**, AI Agents etc. But you still **should be aware about every implementation detail**.
-
-### Task 1 — Use CMake build system
-
-Set up a **CMake** (3.21) build & testing for the project.
-
-| Target | Kind | Notes                                                                                                                                    |
-|---|---|------------------------------------------------------------------------------------------------------------------------------------------|
-| `challenge` | Executable | Includes headers from `plugin/include/`. Does **not** link the plugin at build time — it loads it at runtime via `dlopen`/`LoadLibrary`. |
-| `plugin` | Shared library | Links all of its dependencies as shared libraries. Ensures symbols are visible.                                                          |
-| `plugin_tests` | Executable (test) | Loads the plugin dynamically (same as the main executable).                                                           |
-
-### Task 2 — Add dependency management using Conan 2
-
-Create a `conanfile.py` that:
-- Requires all third-party dependencies. 
-- Uses Conan generators and other modern approaches.
-
-The definition of done is: project can be built **on both Windows (10/11) and Linux (Ubuntu 22.04)** via:
 ```bash
-conan install . --build=missing -s build_type=Release
+SEGFAULT_LOG_PATH=/tmp/myapp_crash.txt ./build/Release/bin/challenge
+```
+
+---
+
+## Prerequisites
+
+| Tool | Version needed | How to get it |
+|------|---------------|---------------|
+| CMake | **≥ 3.23** | see note below |
+| Conan | 2.x | `pip install conan` |
+| Ninja | any | `pip install ninja` or system package |
+| GCC | 11+ | system package or toolchain |
+| Clang | 14+ | system package |
+| MSVC | 2022 (19.3x) | Visual Studio or Build Tools |
+
+### Why 3.23 and not 3.21
+
+`CMakeLists.txt` declares `cmake_minimum_required(VERSION 3.21)` because the
+build logic itself needs nothing beyond 3.21. The mismatch comes from Conan 2.
+When `conan install` runs, `CMakeToolchain` generates `ConanPresets.json` using
+preset schema `"version": 4`. CMake only understands schema version 4 from
+3.23 onwards — on 3.21 or 3.22 the command `cmake --preset conan-release`
+fails immediately with a preset schema version error.
+
+If upgrading CMake is not an option and you are stuck on 3.21 or 3.22, you
+can bypass the preset system entirely by passing the toolchain file directly.
+After running `conan install`, Conan prints the exact fallback command for
+your platform:
+
+**Linux:**
+```bash
+cmake build/Release \
+    -G Ninja \
+    -DCMAKE_TOOLCHAIN_FILE=build/Release/generators/conan_toolchain.cmake \
+    -DCMAKE_POLICY_DEFAULT_CMP0091=NEW \
+    -DCMAKE_BUILD_TYPE=Release
+
+cmake --build build/Release
+ctest --test-dir build/Release --output-on-failure
+```
+
+The toolchain path and build directory come from Conan's `cmake_layout` — 
+`build/Release` on Linux and `build` on Windows with the Ninja generator.
+
+On Ubuntu 22.04 the system CMake is typically 3.22. Install a newer version
+from the Kitware APT repository:
+
+```bash
+wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc \
+  | sudo apt-key add -
+sudo apt-add-repository 'deb https://apt.kitware.com/ubuntu/ jammy main'
+sudo apt-get update && sudo apt-get install cmake
+```
+
+Alternatively `pip install cmake` installs the latest stable release directly.
+
+---
+
+## Conan profiles
+
+Compiler settings live in the `profiles/` directory and are committed to the
+repository. This avoids `conan profile detect` which reads the current machine
+and produces different results in different environments — not reliable for
+reproducible CI.
+
+```
+profiles/
+├── linux-gcc       GCC 13, C++20, libstdc++11
+├── linux-clang     Clang 18, C++20, libstdc++11
+└── windows-msvc    MSVC 194 (VS 2022), C++20, dynamic CRT
+```
+
+Always pass both `--profile:host` and `--profile:build` to Conan. In a normal
+build both point to the same file. In cross-compilation the build profile
+describes the machine running the compiler and the host profile describes the
+target device — Conan keeps the package IDs for each context independent so
+you never accidentally mix binaries built for different architectures.
+
+---
+
+## Building
+
+### Linux — GCC
+
+```bash
+conan install . --build=missing -s build_type=Release \
+    --profile:host=profiles/linux-gcc \
+    --profile:build=profiles/linux-gcc
+
 cmake --preset conan-release
 cmake --build --preset conan-release
-ctest --preset conan-release
+ctest --preset conan-release --output-on-failure
 ```
 
-### Task 3 — Add a SEGFAULT/Access violation detection plugin
- 
-Goal:
-  * Create a new plugin that is able to detect a segfault, writes call stack to the text file. 
-  * It should work on both Windows and Linux.
-  * Write tests for it.
+### Linux — Clang
 
-If this plugin requires some third-party dependencies, they should be installed via Conan as shared libraries (unless header-only).
+```bash
+conan install . --build=missing -s build_type=Release \
+    --profile:host=profiles/linux-clang \
+    --profile:build=profiles/linux-clang
 
-You may need to adjust logic of plugins loading, in order to allow loading your plugin.
-
-### Task 4 — Installation
-
-Add CMake install rules so that `cmake --build --preset <preset> --target install` produces a **self-contained, relocatable** directory tree:
-
-**Linux**
+cmake --preset conan-release
+cmake --build --preset conan-release
+ctest --preset conan-release --output-on-failure
 ```
-<prefix>/
-├── bin/challenge
+
+### Windows — MSVC
+
+Open a **Developer Command Prompt for VS 2022** (or run `vcvars64.bat`) so
+that `cl.exe` and `ninja.exe` are on the path, then:
+
+```bat
+conan install . --build=missing -s build_type=Release ^
+    --profile:host=profiles/windows-msvc ^
+    --profile:build=profiles/windows-msvc
+
+cmake --preset conan-release
+cmake --build --preset conan-release
+ctest --preset conan-release --output-on-failure
+```
+
+The first `conan install` downloads and compiles Boost from source, which
+takes 10–20 minutes. Subsequent runs are instant because Conan caches compiled
+binaries in `~/.conan2/p/` (Linux) or `%USERPROFILE%\.conan2\p\` (Windows).
+
+---
+
+## Running from the build tree
+
+All outputs land in `build/Release/bin/` so the executable finds the plugins
+without any `LD_LIBRARY_PATH` or `PATH` changes:
+
+```bash
+./build/Release/bin/challenge        # Linux
+.\build\Release\bin\challenge.exe    # Windows
+```
+
+Expected output:
+
+```
+Loading plugin from: .../build/Release/bin/libplugin_segfault.so
+Plugin name : plugin_segfault
+Loading plugin from: .../build/Release/bin/libplugin.so
+Plugin name : challange_plugin
+plugin_add(3, 4): 7
+```
+
+---
+
+## Installing
+
+The install target produces a fully self-contained directory tree. All Boost
+shared libraries are copied alongside the project binaries so the installed
+tree runs without the Conan cache or any ambient environment variables.
+
+```bash
+# Stage to ./install relative to the project root
+DESTDIR=./install cmake --build --preset conan-release --target install
+```
+
+`DESTDIR` prepends to every install destination path — it is the standard Unix
+staging mechanism used by Make, CMake, and most package tools.
+
+### Linux install layout
+
+```
+install/
+├── bin/
+│   └── challenge
 └── lib/
     ├── libplugin.so
-    ├── libplugin_segfault.so          # your new plugin
-    ├── third_party_dep_*.so.x.y.z
+    ├── libplugin_segfault.so
+    ├── libboost_log.so.1.84.0
+    ├── libboost_log_setup.so.1.84.0
     └── ...
 ```
 
-**Windows**
+### Windows install layout
+
 ```
-<prefix>/
+install/
 └── bin/
     ├── challenge.exe
     ├── plugin.dll
-    ├── plugin_segfault.dll             # your new plugin
-    ├── third_party_dep_*.dll
-    └── ...
-    lib/
-    ├── plugin.lib
-    ├── plugin_segfault.dll             # your new plugin
+    ├── plugin_segfault.dll
+    ├── boost_log-vc143-mt-x64-1_84.dll
     └── ...
 ```
 
-All shared Conan dependencies (Boost, and any transitive shared libs) **must** be included in the installed tree.
+Run from the install tree:
 
-After installation, the executable should start successfully and show all plugins are loaded:
 ```bash
-> /.../<prefix>/bin/challenge
-Loading plugin from: /.../<prefix>/.../libplugin.so
-...
+./install/bin/challenge       # Linux
+.\install\bin\challenge.exe   # Windows
 ```
 
-### Task 5 — Add Linters
-
-**Base goal:** Configure the following static-analysis tools:
-  
-| Tool             | Scope |
-|------------------|---|
-| **clang-format** | All project C++ source and header files. Provide a config. |
-| **clang-tidy**   | All project C++ source files. Provide a config. |
-
-
-- Both must be runnable locally (e.g. via a script or some other tool).
-- Both must run automatically in CI and **fail the build** on violations.
-
-**Extra goal:** Linters should be runnable locally and in CI via `pre-commit`.
-
-### Task 6 — CI / CD (GitHub Actions)
-
-Create `.github/workflows/` pipeline(s) that run on `push` to `main`, on pull requests, **and** on `v*` tags.
-
-The CI must include the following **jobs / stages**:
-
-| Stage | Runs on | Description                                                                                                                        |
-|---|---|------------------------------------------------------------------------------------------------------------------------------------|
-| **Build & Test** | `ubuntu-latest` (GCC), `ubuntu-latest` (Clang), `windows-latest` (MSVC) | Conan install, CMake configure + build, `ctest`.                                                                                   |
-| **Lint** | `ubuntu-latest` | Run clang-format (check mode) and clang-tidy. Fail on violations.                                                                  |
-| **Install & Package** | same matrix as Build & Test | `cmake --install`, archive the result (`.tar.gz` on Linux, `.zip` on Windows). Upload as workflow artifacts.                       |
-| **Release** | `ubuntu-latest` | **Only on `v*.*.*` tags.** Download all artifacts from previous stages and create a **GitHub Release** with the archives attached. |
-
-### Extra Task 7 — Add Sanitizers
-
-Add a CMake option (e.g. `-DENABLE_SANITIZERS=ON`) that enables **AddressSanitizer** for all project targets.
-
-- Must work with GCC and Clang on Linux.
-- Tests must pass under ASan without leaks or errors.
-- CI must run the test suite with ASan enabled in the separate job (original Build&Test job is unchanged).
-
-### Extra Task 8 — Introduce a Conan Package
-
-Make the project itself consumable as a Conan 2 package.
-
-1. The `conanfile.py` must support `conan create .` — building and packaging the library targets (plugins) and their headers.
-2. Add a `test_package/` directory so that `conan test test_package/ challenge_project/<version>` validates the package.
-3. The resulting Conan package cache (`.tgz`) should also be **uploaded as a release artifact alongside the install archives in Task 7**.
-
-The definition of done is: conan package can be built and tested **on both Windows (10/11) and Linux (Ubuntu 22.04)** via:
-```bash
-conan create . --build=missing
-```
-Then, after downloading the conan package archive from release artifacts, this command should successfully install a package:
-```bash
-conan cache restore challenge-conan-package.tar.gz
-```
+On Linux the binary carries an RPATH of `$ORIGIN/../lib` so it finds shared
+libraries relative to its own location regardless of where the install tree is
+placed.
 
 ---
 
-### 3. Evaluation Criteria
+## Linting
 
-| Area                  | What we look for |
-|-----------------------|---|
-| **Correctness**       | Everything builds and runs on both Linux and Windows. Tests pass. Installed tree is self-contained. |
-| **CMake quality**     | Proper use of targets, generator expressions, install rules. No hard-coded paths. |
-| **Conan integration** | Clean `conanfile.py`. `conan install`, `conan create`, and `conan test` all work. Shared-library option correctly propagated. |
-| **CI robustness**     | Matrix covers all required platforms/compilers. Linters and sanitizers actually catch issues. Release uploads are complete. |
-| **Code quality**      | Clean, idiomatic C++20. New plugin follows the same conventions as the existing one. |
-| **Plugin robustness** |  |
-| **Documentation**     | Brief but sufficient instructions in a top-level README for a new developer to clone, build, and run the project. |
+Both tools need a configure step first so that `compile_commands.json` exists.
+
+### clang-format
+
+```bash
+# Check for violations — used in CI, exits non-zero on any violation
+cmake --build --preset conan-release --target format-check
+
+# Fix violations in place — use this locally before committing
+cmake --build --preset conan-release --target format-fix
+```
+
+### clang-tidy
+
+Runs automatically during compilation when enabled:
+
+```bash
+cmake --preset conan-release -DENABLE_CLANG_TIDY=ON
+cmake --build --preset conan-release
+```
+
+The `.clang-tidy` config enables `cppcoreguidelines-*`, `modernize-*`,
+`performance-*`, and `readability-*` checks with `WarningsAsErrors=*` so any
+violation stops the build immediately.
+
+---
+
+## Sanitizers
+
+AddressSanitizer and UndefinedBehaviorSanitizer work on Linux with both GCC
+and Clang. MSVC supports ASan only — UBSan is not available on Windows.
+
+```bash
+cmake --preset conan-release -DENABLE_SANITIZERS=ON
+cmake --build --preset conan-release
+ASAN_OPTIONS=halt_on_error=1:detect_leaks=0 \
+UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
+ctest --preset conan-release --output-on-failure
+```
+
+`detect_leaks=0` disables LeakSanitizer. Boost has intentional one-time
+startup allocations that LSan reports as leaks — they are not bugs in this
+project. ASan and UBSan still fully instrument all memory accesses and
+undefined behaviour in project code.
+
+The `ENABLE_SANITIZERS` option links an interface target `challenge::sanitizers`
+to every project target including both plugins. This is necessary because the
+plugins are loaded at runtime — if only the host binary is instrumented but the
+plugins are not, ASan cannot detect errors that occur inside plugin code.
+
+---
+
+## CI pipeline
+
+The pipeline runs on every push to `main`, on pull requests, and on `v*.*.*`
+tags.
+
+| Job | Platform | Description |
+|-----|----------|-------------|
+| Build & Test | ubuntu/GCC, ubuntu/Clang, windows/MSVC | Conan install, configure, build, ctest |
+| Lint | ubuntu/GCC | clang-format check + clang-tidy, fails on any violation |
+| ASan + UBSan | ubuntu/GCC, ubuntu/Clang | Full test suite under sanitizer instrumentation |
+| Install & Package | same matrix as Build & Test | cmake install, archive as `.tar.gz` or `.zip`, upload as workflow artifact |
+| Release | ubuntu | Only on `v*.*.*` tags — attaches all archives to a GitHub Release |
+
+Conan binaries are cached between runs using `actions/cache` keyed on the
+`conanfile.py` hash and the compiler. Boost is only compiled from source on
+the first run for each compiler or when `conanfile.py` changes.
+
+---
+
+## Project layout
+
+```
+challenge-project/
+├── app/
+│   └── src/main.cpp                host — loads plugins via dlopen/LoadLibrary
+├── plugin/
+│   ├── include/plugin/plugin.h     C API and PLUGIN_API visibility macro
+│   └── src/plugin.cpp              demo plugin using Boost.Log
+├── plugin_segfault/
+│   ├── include/plugin_segfault/plugin_segfault.h
+│   └── src/plugin_segfault.cpp     signal handler + Boost.Stacktrace backtrace
+├── tests/
+│   ├── test_plugin.cpp             GTest suite for the demo plugin
+│   └── test_plugin_segfault.cpp    GTest suite for the segfault plugin
+├── cmake/
+│   ├── InstallDeps.cmake           copies Conan shared libs into the install tree
+│   └── Sanitizers.cmake            challenge::sanitizers interface target
+├── profiles/
+│   ├── linux-gcc                   Conan profile — GCC 13, Linux
+│   ├── linux-clang                 Conan profile — Clang 18, Linux
+│   └── windows-msvc                Conan profile — MSVC 194, Windows
+├── .clang-format                   Google style, 4-space indent
+├── .clang-tidy                     cppcoreguidelines + modernize + readability
+├── CMakeLists.txt                  root build definition
+├── CMakePresets.json               base + conan-release + conan-debug presets
+└── conanfile.py                    Boost 1.84.0 (shared) + GTest 1.14.0 (static)
+```
