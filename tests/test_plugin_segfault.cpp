@@ -51,9 +51,7 @@ public:
 #endif
     }
 
-    [[nodiscard]] bool is_loaded() const {
-        return handle_ != nullptr;
-    }
+    [[nodiscard]] bool is_loaded() const { return handle_ != nullptr; }
 
 private:
     void* handle_ = nullptr;

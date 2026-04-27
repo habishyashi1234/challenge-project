@@ -27,7 +27,7 @@ public:
 #else
         handle_ = dlopen(path.c_str(), RTLD_LAZY);
         if (handle_ == nullptr) {
-            std::cerr << "Failed to load plugin: " << dlerror() << std::endl;
+            std::cerr << "Failed to load plugin: " << dlerror() << "\n";
         }
 #endif
     }
@@ -70,9 +70,7 @@ public:
 #endif
     }
 
-    [[nodiscard]] bool is_loaded() const {
-        return handle_ != nullptr;
-    }
+    [[nodiscard]] bool is_loaded() const { return handle_ != nullptr; }
 
 private:
     void* handle_ = nullptr;  // NOLINT(cppcoreguidelines-pro-type-member-init)
