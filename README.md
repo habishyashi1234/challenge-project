@@ -59,26 +59,6 @@ preset schema `"version": 4`. CMake only understands schema version 4 from
 3.23 onwards — on 3.21 or 3.22 the command `cmake --preset conan-release`
 fails immediately with a preset schema version error.
 
-If upgrading CMake is not an option and you are stuck on 3.21 or 3.22, you
-can bypass the preset system entirely by passing the toolchain file directly.
-After running `conan install`, Conan prints the exact fallback command for
-your platform:
-
-**Linux:**
-```bash
-cmake build/Release \
-    -G Ninja \
-    -DCMAKE_TOOLCHAIN_FILE=build/Release/generators/conan_toolchain.cmake \
-    -DCMAKE_POLICY_DEFAULT_CMP0091=NEW \
-    -DCMAKE_BUILD_TYPE=Release
-
-cmake --build build/Release
-ctest --test-dir build/Release --output-on-failure
-```
-
-The toolchain path and build directory come from Conan's `cmake_layout` — 
-`build/Release` on Linux and `build` on Windows with the Ninja generator.
-
 On Ubuntu 22.04 the system CMake is typically 3.22. Install a newer version
 from the Kitware APT repository:
 
@@ -90,6 +70,29 @@ sudo apt-get update && sudo apt-get install cmake
 ```
 
 Alternatively `pip install cmake` installs the latest stable release directly.
+
+### Stuck on CMake 3.21 or 3.22?
+
+If upgrading is not an option you can bypass the preset system entirely.
+After `conan install` finishes it prints the exact fallback command for your
+platform — look for the line starting with `(cmake<3.23)`. On Linux it looks
+like this:
+
+```bash
+# After conan install, use the toolchain file directly instead of --preset
+cmake build/Release \
+    -G Ninja \
+    -DCMAKE_TOOLCHAIN_FILE=build/Release/generators/conan_toolchain.cmake \
+    -DCMAKE_POLICY_DEFAULT_CMP0091=NEW \
+    -DCMAKE_BUILD_TYPE=Release
+
+cmake --build build/Release
+ctest --test-dir build/Release --output-on-failure
+```
+
+The build output goes to the same `build/Release/` directory so everything
+else — install, linting, sanitizers — works identically, just without the
+`--preset` shorthand.
 
 ---
 
@@ -124,9 +127,9 @@ conan install . --build=missing -s build_type=Release \
     --profile:host=profiles/linux-gcc \
     --profile:build=profiles/linux-gcc
 
-cmake --preset conan-release
-cmake --build --preset conan-release
-ctest --preset conan-release --output-on-failure
+cmake --preset release
+cmake --build --preset release
+ctest --preset release --output-on-failure
 ```
 
 ### Linux — Clang
@@ -136,9 +139,9 @@ conan install . --build=missing -s build_type=Release \
     --profile:host=profiles/linux-clang \
     --profile:build=profiles/linux-clang
 
-cmake --preset conan-release
-cmake --build --preset conan-release
-ctest --preset conan-release --output-on-failure
+cmake --preset release
+cmake --build --preset release
+ctest --preset release --output-on-failure
 ```
 
 ### Windows — MSVC
@@ -151,14 +154,35 @@ conan install . --build=missing -s build_type=Release ^
     --profile:host=profiles/windows-msvc ^
     --profile:build=profiles/windows-msvc
 
-cmake --preset conan-release
-cmake --build --preset conan-release
-ctest --preset conan-release --output-on-failure
+cmake --preset release
+cmake --build --preset release
+ctest --preset release --output-on-failure
 ```
 
 The first `conan install` downloads and compiles Boost from source, which
 takes 10–20 minutes. Subsequent runs are instant because Conan caches compiled
 binaries in `~/.conan2/p/` (Linux) or `%USERPROFILE%\.conan2\p\` (Windows).
+
+### Available presets
+
+`CMakePresets.json` ships two named presets that you can use directly after
+`conan install`:
+
+| Preset | Build type | Use case |
+|--------|-----------|---------|
+| `release` | Release | Normal builds and CI |
+| `debug` | Debug | Local debugging |
+
+```bash
+# Debug build — same workflow, just swap the preset name
+conan install . --build=missing -s build_type=Debug \
+    --profile:host=profiles/linux-gcc \
+    --profile:build=profiles/linux-gcc
+
+cmake --preset debug
+cmake --build --preset debug
+ctest --preset debug --output-on-failure
+```
 
 ---
 
@@ -190,13 +214,47 @@ The install target produces a fully self-contained directory tree. All Boost
 shared libraries are copied alongside the project binaries so the installed
 tree runs without the Conan cache or any ambient environment variables.
 
+`install` is a built-in CMake target — it is created automatically whenever
+the project has any `install()` rule. No extra CMake code is needed to enable
+it. Two equivalent ways exist to trigger it:
+
 ```bash
-# Stage to ./install relative to the project root
-DESTDIR=./install cmake --build --preset conan-release --target install
+# Modern way — cmake --install reads cmake_install.cmake from the build dir
+# and runs all install() rules. Prefix controls where files go.
+cmake --install build/Release --prefix ./install        # Linux
+cmake --install build --prefix ./install                 # Windows
 ```
 
-`DESTDIR` prepends to every install destination path — it is the standard Unix
-staging mechanism used by Make, CMake, and most package tools.
+```bash
+# Older way — invokes the build system's install target
+# Requires DESTDIR or CMAKE_INSTALL_PREFIX set at configure time
+cmake --build --preset release --target install
+```
+
+Both commands run exactly the same install rules from the CMakeLists files.
+The difference is syntax and how the prefix is specified — `cmake --install`
+accepts `--prefix` directly on the command line, while `cmake --build --target
+install` uses whatever `CMAKE_INSTALL_PREFIX` was set to at configure time, or
+`DESTDIR` as a prepend override.
+
+For local use `cmake --install` is simpler and cleaner. In CI the package job
+uses `cmake --build --preset release --target install` with `DESTDIR` because
+the preset resolves the build directory automatically across platforms, avoiding
+separate Linux/Windows steps. An equally valid and arguably clearer CI approach
+is to use platform-specific steps:
+
+```yaml
+- name: Install (Linux)
+  if: runner.os == 'Linux'
+  run: cmake --install build/Release --prefix ${{ github.workspace }}/install
+
+- name: Install (Windows)
+  if: runner.os == 'Windows'
+  run: cmake --install build --prefix ${{ github.workspace }}/install
+```
+
+This makes the platform difference explicit and avoids the `DESTDIR` confusion
+entirely.
 
 ### Linux install layout
 
@@ -235,6 +293,44 @@ On Linux the binary carries an RPATH of `$ORIGIN/../lib` so it finds shared
 libraries relative to its own location regardless of where the install tree is
 placed.
 
+### How the Boost libraries are bundled
+
+`cmake/InstallDeps.cmake` uses CMake's `file(GET_RUNTIME_DEPENDENCIES)` which
+reads the actual ELF import tables (Linux) or PE import tables (Windows) of
+the installed binaries at install time. It collects every shared library the
+binaries depend on, then copies them into the install prefix.
+
+The destination is chosen without hardcoding any directory name:
+
+```cmake
+if(WIN32)
+    set(_dep_dest "${CMAKE_INSTALL_BINDIR}")  # bin/ — where Windows looks for DLLs
+else()
+    set(_dep_dest "${CMAKE_INSTALL_LIBDIR}")  # lib/ — standard on Linux
+endif()
+```
+
+System libraries are excluded by regex patterns so they are never copied —
+the install tree only bundles what is not guaranteed to be on the target machine:
+
+```cmake
+POST_EXCLUDE_REGEXES
+    "/lib/x86_64-linux-gnu/"   # Linux system libs
+    "/lib64/"
+    "/usr/lib/"
+    "[Ww]indows"               # Windows system directory
+    "api-ms-win"               # Windows API sets
+    "VCRUNTIME"                # MSVC runtime
+    "MSVCP"
+    "ucrtbase"
+    "kernel32"
+    "user32"
+```
+
+This approach works on both platforms without any path hardcoding. On Linux
+`GET_RUNTIME_DEPENDENCIES` follows `.so` symlinks via `FOLLOW_SYMLINK_CHAIN`
+so versioned libraries like `libboost_log.so.1.84.0` are correctly included.
+
 ---
 
 ## Linting
@@ -245,10 +341,10 @@ Both tools need a configure step first so that `compile_commands.json` exists.
 
 ```bash
 # Check for violations — used in CI, exits non-zero on any violation
-cmake --build --preset conan-release --target format-check
+cmake --build --preset release --target format-check
 
 # Fix violations in place — use this locally before committing
-cmake --build --preset conan-release --target format-fix
+cmake --build --preset release --target format-fix
 ```
 
 ### clang-tidy
@@ -256,8 +352,8 @@ cmake --build --preset conan-release --target format-fix
 Runs automatically during compilation when enabled:
 
 ```bash
-cmake --preset conan-release -DENABLE_CLANG_TIDY=ON
-cmake --build --preset conan-release
+cmake --preset release -DENABLE_CLANG_TIDY=ON
+cmake --build --preset release
 ```
 
 The `.clang-tidy` config enables `cppcoreguidelines-*`, `modernize-*`,
@@ -272,11 +368,11 @@ AddressSanitizer and UndefinedBehaviorSanitizer work on Linux with both GCC
 and Clang. MSVC supports ASan only — UBSan is not available on Windows.
 
 ```bash
-cmake --preset conan-release -DENABLE_SANITIZERS=ON
-cmake --build --preset conan-release
+cmake --preset release -DENABLE_SANITIZERS=ON
+cmake --build --preset release
 ASAN_OPTIONS=halt_on_error=1:detect_leaks=0 \
 UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
-ctest --preset conan-release --output-on-failure
+ctest --preset release --output-on-failure
 ```
 
 `detect_leaks=0` disables LeakSanitizer. Boost has intentional one-time
@@ -308,6 +404,35 @@ Conan binaries are cached between runs using `actions/cache` keyed on the
 `conanfile.py` hash and the compiler. Boost is only compiled from source on
 the first run for each compiler or when `conanfile.py` changes.
 
+To trigger a release, push a version tag:
+
+```bash
+git tag v1.2.0
+git push origin v1.2.0
+```
+
+The release job runs only after Build, Lint, and Package all pass. It then
+creates a GitHub Release with the platform archives attached as downloadable
+assets.
+
+---
+
+## Known limitations
+
+**`InstallDeps.cmake` scans the installed executables and plugins** —
+`file(GET_RUNTIME_DEPENDENCIES)` reads the ELF/PE import tables of the
+installed `challenge`, `libplugin.so`, and `libplugin_segfault.so` to find
+their runtime dependencies. This works correctly for the current dependency
+graph but the list of binaries to scan is explicit. If you add a new plugin
+that depends on additional shared libraries, add its installed path to the
+`EXECUTABLES` list in `InstallDeps.cmake`.
+
+**Clang version pinned to 18** — the `profiles/linux-clang` profile pins
+`compiler.version=18` to match the default Clang on `ubuntu-latest` at the
+time of writing. If GitHub upgrades the runner image to a newer Ubuntu,
+update both `profiles/linux-clang` and the `apt-get install clang-18` step
+in `ci.yml` to match.
+
 ---
 
 ## Project layout
@@ -335,6 +460,6 @@ challenge-project/
 ├── .clang-format                   Google style, 4-space indent
 ├── .clang-tidy                     cppcoreguidelines + modernize + readability
 ├── CMakeLists.txt                  root build definition
-├── CMakePresets.json               base + conan-release + conan-debug presets
+├── CMakePresets.json               release + debug presets (conan-release generated)
 └── conanfile.py                    Boost 1.84.0 (shared) + GTest 1.14.0 (static)
 ```
